@@ -3,8 +3,9 @@
 
 mod panic;
 mod format;
+mod sensors;
 
-use core::fmt::Write;
+use core::{fmt::Write, cell::Cell};
 use arrayvec::ArrayString;
 use cortex_m_rt::{entry};
 use cortex_m::peripheral::Peripherals as CortexPeripherals;
@@ -15,11 +16,12 @@ use embedded_graphics::{
 };
 use embedded_hal::spi;
 use embedded_sdmmc::{Controller, SdMmcSpi, TimeSource, Timestamp};
-use format::format_date;
+use format::{format_date, format_sensors};
 use panic::halt_with_error_led;
 use hx1230::{ArrayDisplayBuffer, SpiDriver, DisplayBuffer, DisplayDriver};
 use lib_datalogger::detect_sd_card_size;
 use pcf8563::PCF8563;
+use sensors::read_sensors;
 use stm32f4xx_hal::{prelude::*, pac::{self, Peripherals}, gpio::NoPin, i2c::I2c};
 
 use crate::format::print_card_size;
@@ -61,7 +63,7 @@ fn run(
         &clocks,
     );
 
-    let time_i2c = I2c::new(
+    let i2c = I2c::new(
         dp.I2C1,
         (
             gpiob.pb8.into_alternate().set_open_drain(),
@@ -70,6 +72,8 @@ fn run(
         400.kHz(),
         &clocks,
     );
+
+    let i2c_container = Cell::new(Some(i2c));
 
     let sd_cs = gpiob.pb0.into_push_pull_output();
 
@@ -89,21 +93,18 @@ fn run(
     print_card_size(&mut debug, card_size);
     let _ = writeln!(&mut debug, "");
 
-    let mut time_driver = PCF8563::new(time_i2c);
-
     loop {
         frame_buffer.clear_buffer(0x00);
         let mut text = ArrayString::<100>::new();
         let _ = write!(&mut text, "{}", debug);
 
-        match time_driver.get_datetime() {
-            Ok(datetime) => {
-                format_date(&mut text, datetime);
-            },
-            Err(error) => {
-                let _ = write!(&mut text, "Time? Err:\n{:?}", error);
-            }
-        };
+        let i2c_local = Cell::new(None);
+        i2c_container.swap(&i2c_local);
+        let (sensors, i2c_returned) = read_sensors(i2c_local.into_inner().unwrap());
+        let i2c_returned_cell = Cell::new(Some(i2c_returned));
+        i2c_returned_cell.swap(&i2c_container);
+
+        format_sensors(&mut text, &sensors);
 
         Text::new(&text, Point::new(0, 10), text_style)
             .draw(&mut frame_buffer)
