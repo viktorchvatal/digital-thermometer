@@ -9,6 +9,7 @@ use core::{fmt::Write, cell::Cell};
 use arrayvec::ArrayString;
 use cortex_m_rt::{entry};
 use cortex_m::peripheral::Peripherals as CortexPeripherals;
+use dht11::Dht11;
 use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::*,
@@ -16,11 +17,10 @@ use embedded_graphics::{
 };
 use embedded_hal::spi;
 use embedded_sdmmc::{Controller, SdMmcSpi, TimeSource, Timestamp};
-use format::{format_date, format_sensors};
+use format::{format_sensors};
 use panic::halt_with_error_led;
 use hx1230::{ArrayDisplayBuffer, SpiDriver, DisplayBuffer, DisplayDriver};
 use lib_datalogger::detect_sd_card_size;
-use pcf8563::PCF8563;
 use sensors::read_sensors;
 use stm32f4xx_hal::{prelude::*, pac::{self, Peripherals}, gpio::NoPin, i2c::I2c};
 
@@ -37,15 +37,16 @@ fn main() -> ! {
 
 fn run(
     dp: pac::Peripherals,
-    _cp: cortex_m::Peripherals,
+    mut cp: cortex_m::Peripherals,
 ) -> Result<(), ()> {
-    let rcc = dp.RCC.constrain();
+    cp.DCB.enable_trace();
+    cp.DWT.enable_cycle_counter();
 
+    let rcc = dp.RCC.constrain();
     let clocks = rcc.cfgr.use_hse(25.MHz()).sysclk(100.MHz()).hclk(25.MHz()).freeze();
 
     let gpioa = dp.GPIOA.split();
     let gpiob = dp.GPIOB.split();
-    let gpioc = dp.GPIOC.split();
 
     let mut display_cs = gpiob.pb14.into_push_pull_output();
 
@@ -73,6 +74,8 @@ fn run(
         &clocks,
     );
 
+    let thermo_1_pin = gpiob.pb10.into_open_drain_output();
+
     let i2c_container = Cell::new(Some(i2c));
 
     let sd_cs = gpiob.pb0.into_push_pull_output();
@@ -87,6 +90,8 @@ fn run(
     let mut sd_controller = Controller::new(SdMmcSpi::new(sd_spi, sd_cs), Clock);
     let card_size = detect_sd_card_size(&mut sd_controller);
 
+    let mut thermo_1_driver = Dht11::new(thermo_1_pin);
+
     let text_style = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
 
     let mut debug = ArrayString::<100>::new();
@@ -100,7 +105,13 @@ fn run(
 
         let i2c_local = Cell::new(None);
         i2c_container.swap(&i2c_local);
-        let (sensors, i2c_returned) = read_sensors(i2c_local.into_inner().unwrap());
+
+        let (sensors, i2c_returned) = read_sensors(
+            i2c_local.into_inner().unwrap(),
+            &mut thermo_1_driver,
+            &mut delay
+        );
+
         let i2c_returned_cell = Cell::new(Some(i2c_returned));
         i2c_returned_cell.swap(&i2c_container);
 

@@ -1,4 +1,5 @@
 use core::fmt::Write;
+use dht11::Measurement;
 use embedded_sdmmc::SdMmcError;
 use lib_datalogger::DatalogError;
 use pcf8563::DateTime;
@@ -34,9 +35,29 @@ pub fn format_sensors(
         Some(ref values) => format_temperature_pressure(output, values),
         None => { let _ = write!(output, "TempPres unknown"); },
     };
+
+    let _ = writeln!(output);
+
+    for temperature_humidity in sensors.temperature_humidity.iter() {
+        match temperature_humidity {
+            Some(ref values) => format_temperature_humidity(output, values),
+            None => { let _ = write!(output, "TempHumi unknown"); },
+        };
+
+        let _ = writeln!(output);
+    }
 }
 
-pub fn format_temperature_pressure(
+fn format_temperature_humidity(
+    output: &mut dyn Write,
+    values: &Measurement
+) {
+    let _ = write!(output, "{}.{} C", values.temperature/10, values.temperature%10);
+    let _ = write!(output, "   ");
+    let _ = write!(output, "{}.{} %", values.humidity/10, values.humidity%10);
+}
+
+fn format_temperature_pressure(
     output: &mut dyn Write,
     values: &TemperaturePressure
 )  {
@@ -45,7 +66,7 @@ pub fn format_temperature_pressure(
     let _ = write!(output, "{}.{:02} hPa", values.pressure/100, values.pressure % 100);
 }
 
-pub fn format_date(
+fn format_date(
     destination: &mut dyn Write,
     datetime: DateTime
 )  {
