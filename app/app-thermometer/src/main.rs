@@ -7,7 +7,7 @@ mod sensors;
 mod log;
 mod display;
 
-use core::{cell::Cell};
+use core::{cell::Cell, fmt::Write};
 use arrayvec::ArrayString;
 use cortex_m_rt::{entry};
 use cortex_m::peripheral::Peripherals as CortexPeripherals;
@@ -15,10 +15,11 @@ use dht11::Dht11;
 use display::render_display;
 use embedded_hal::spi;
 use embedded_sdmmc::{Controller, SdMmcSpi, TimeSource, Timestamp};
+use log::{format_file_name, format_sensors_log};
 use panic::halt_with_error_led;
 use hx1230::{ArrayDisplayBuffer, SpiDriver, DisplayBuffer};
-use lib_datalogger::detect_sd_card_size;
-use sensors::read_sensors;
+use lib_datalogger::{detect_sd_card_size, append_to_file};
+use sensors::{read_sensors, Time};
 use stm32f4xx_hal::{prelude::*, pac::{self, Peripherals}, gpio::NoPin, i2c::I2c};
 
 use crate::format::print_card_size;
@@ -85,8 +86,9 @@ fn run(
 
     let mut thermo_1_driver = Dht11::new(thermo_1_pin);
 
-    let mut sd_result = ArrayString::<20>::new();
+    let mut sd_result = ArrayString::<40>::new();
     print_card_size(&mut sd_result, card_size);
+    let mut last_write_attempt = Time::default();
 
     loop {
         frame_buffer.clear_buffer(0x00);
@@ -104,6 +106,25 @@ fn run(
         i2c_returned_cell.swap(&i2c_container);
 
         render_display(&mut frame_buffer, &mut display, &sd_result, &sensors);
+
+        if let Some(time) = sensors.get_time() {
+            if time.seconds % 10 == 0 && time != last_write_attempt {
+                if let Some(file_name) = format_file_name(&sensors) {
+                    last_write_attempt = time;
+                    let mut file_data = ArrayString::<200>::new();
+                    format_sensors_log(&mut file_data, &sensors);
+                    sd_result.clear();
+                    match append_to_file(&mut sd_controller, &file_name, &file_data) {
+                        Ok(_) => {
+                            let _ = write!(&mut sd_result, "OK: {}\nWritten: {}", &file_name, time);
+                        },
+                        Err(error) => {
+                            let _ = write!(&mut sd_result, "Err: {}", error);
+                        }
+                    }
+                }
+            }
+        }
 
         delay.delay_ms(400_u16);
     }

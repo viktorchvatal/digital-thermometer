@@ -5,7 +5,7 @@ use pcf8563::DateTime;
 
 use crate::sensors::{Sensors, TemperaturePressure};
 
-pub fn format_log_file(
+pub fn format_file_name(
     sensors: &Sensors,
 ) -> Option<ArrayString<15>> {
     sensors.time.as_ref().and_then(|time| {
@@ -32,7 +32,7 @@ pub fn format_sensors_log(
         print_optional(output, temperature_humidity.as_ref(), format_dht11_humidity);
     }
 
-    let _ = write!(output, "End");
+    let _ = write!(output, "End\n");
 }
 
 fn print_optional<T, F>(
@@ -41,8 +41,13 @@ fn print_optional<T, F>(
     formatter: F
 ) where F: Fn(&mut dyn Write, &T) -> Result<(), core::fmt::Error> {
     match value {
-        Some(value) => { let _ = formatter(output, value);},
-        None => { let _ = write!(output, "? "); },
+        Some(value) => {
+            let _ = formatter(output, value);
+            let _ = write!(output, " ");
+        },
+        None => {
+            let _ = write!(output, "? ");
+        },
     }
 }
 
@@ -78,19 +83,19 @@ fn format_bmp280_pressure(
     output: &mut dyn Write,
     value: &TemperaturePressure,
 ) -> Result<(), core::fmt::Error> {
-    write!(output, "{}.{:02} hPa", value.pressure/100, value.pressure % 100)
+    write!(output, "{}.{:02}", value.pressure/100, value.pressure % 100)
 }
 
 fn format_dht11_temperature(
     output: &mut dyn Write,
     value: &Measurement,
 ) -> Result<(), core::fmt::Error> {
-    write!(output, "{}.{:02}", value.temperature/100, value.temperature % 100)
+    write!(output, "{}.{:02}", value.temperature/10, value.temperature % 10)
 }
 
 fn format_dht11_humidity(
     output: &mut dyn Write,
     value: &Measurement,
 ) -> Result<(), core::fmt::Error> {
-    write!(output, "{}.{} %", value.humidity/10, value.humidity%10)
+    write!(output, "{}.{}", value.humidity/10, value.humidity%10)
 }

@@ -1,3 +1,5 @@
+use core::fmt::Display;
+
 use bmp280_rs::{BMP280, I2CAddress};
 use dht11::{Dht11, Measurement};
 use pcf8563::{PCF8563, DateTime};
@@ -8,6 +10,39 @@ pub struct Sensors {
     pub time: Option<DateTime>,
     pub temperature_pressure: Option<TemperaturePressure>,
     pub temperature_humidity: [Option<Measurement>; 4],
+}
+
+impl Sensors {
+    pub fn get_time(&self) -> Option<Time> {
+        self.time.map(|date_time| Time {
+            hours: date_time.hours,
+            minutes: date_time.minutes,
+            seconds: date_time.seconds,
+        })
+    }
+}
+
+#[derive(PartialEq, Eq, Copy, Clone)]
+pub struct Time {
+    pub hours: u8,
+    pub minutes: u8,
+    pub seconds: u8,
+}
+
+impl Default for Time {
+    fn default() -> Self {
+        Self {
+            hours: 0,
+            minutes: 0,
+            seconds: 0
+        }
+    }
+}
+
+impl Display for Time {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{:02}:{:02}:{:02}", self.hours, self.minutes, self.seconds)
+    }
 }
 
 pub fn read_sensors<I2C, I2CE, D, T1, TE>(
