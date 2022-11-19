@@ -4,22 +4,19 @@
 mod panic;
 mod format;
 mod sensors;
+mod log;
+mod display;
 
-use core::{fmt::Write, cell::Cell};
+use core::{cell::Cell};
 use arrayvec::ArrayString;
 use cortex_m_rt::{entry};
 use cortex_m::peripheral::Peripherals as CortexPeripherals;
 use dht11::Dht11;
-use embedded_graphics::{
-    pixelcolor::BinaryColor,
-    prelude::*,
-    mono_font::{MonoTextStyle, ascii::{FONT_5X8}}, text::{Text}
-};
+use display::render_display;
 use embedded_hal::spi;
 use embedded_sdmmc::{Controller, SdMmcSpi, TimeSource, Timestamp};
-use format::{format_sensors};
 use panic::halt_with_error_led;
-use hx1230::{ArrayDisplayBuffer, SpiDriver, DisplayBuffer, DisplayDriver};
+use hx1230::{ArrayDisplayBuffer, SpiDriver, DisplayBuffer};
 use lib_datalogger::detect_sd_card_size;
 use sensors::read_sensors;
 use stm32f4xx_hal::{prelude::*, pac::{self, Peripherals}, gpio::NoPin, i2c::I2c};
@@ -75,13 +72,9 @@ fn run(
     );
 
     let thermo_1_pin = gpiob.pb10.into_open_drain_output();
-
     let i2c_container = Cell::new(Some(i2c));
-
     let sd_cs = gpiob.pb0.into_push_pull_output();
-
     let mut delay = dp.TIM5.delay_us(&clocks);
-
     let mut frame_buffer: ArrayDisplayBuffer = ArrayDisplayBuffer::new();
 
     let mut display = SpiDriver::new(&mut display_spi, &mut display_cs);
@@ -92,16 +85,11 @@ fn run(
 
     let mut thermo_1_driver = Dht11::new(thermo_1_pin);
 
-    let text_style = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
-
-    let mut debug = ArrayString::<100>::new();
-    print_card_size(&mut debug, card_size);
-    let _ = writeln!(&mut debug, "");
+    let mut sd_result = ArrayString::<20>::new();
+    print_card_size(&mut sd_result, card_size);
 
     loop {
         frame_buffer.clear_buffer(0x00);
-        let mut text = ArrayString::<100>::new();
-        let _ = write!(&mut text, "{}", debug);
 
         let i2c_local = Cell::new(None);
         i2c_container.swap(&i2c_local);
@@ -115,14 +103,7 @@ fn run(
         let i2c_returned_cell = Cell::new(Some(i2c_returned));
         i2c_returned_cell.swap(&i2c_container);
 
-        format_sensors(&mut text, &sensors);
-
-        Text::new(&text, Point::new(0, 10), text_style)
-            .draw(&mut frame_buffer)
-            .map_err(|_| ())?;
-
-        let mut driver = SpiDriver::new(&mut display_spi, &mut display_cs);
-        driver.send_buffer(&frame_buffer).map_err(|_| ())?;
+        render_display(&mut frame_buffer, &mut display, &sd_result, &sensors);
 
         delay.delay_ms(400_u16);
     }

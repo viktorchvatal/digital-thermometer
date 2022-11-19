@@ -15,12 +15,12 @@ pub fn print_card_size(
             let _ = write!(debug, "SD Card {} MB", size >> 20);
         },
         Err(error) => {
-            let _ = write!(debug, "SD Card not detected\n{}0", error);
+            let _ = write!(debug, "SD Card undetected\n{}", error);
         }
     }
 }
 
-pub fn format_sensors(
+pub fn format_sensors_display(
     output: &mut dyn Write,
     sensors: &Sensors,
 ) {

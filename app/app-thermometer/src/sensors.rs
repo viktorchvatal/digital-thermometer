@@ -7,7 +7,7 @@ use embedded_hal::digital::v2::{InputPin, OutputPin};
 pub struct Sensors {
     pub time: Option<DateTime>,
     pub temperature_pressure: Option<TemperaturePressure>,
-    pub temperature_humidity: [Option<Measurement>; 5],
+    pub temperature_humidity: [Option<Measurement>; 4],
 }
 
 pub fn read_sensors<I2C, I2CE, D, T1, TE>(
@@ -32,7 +32,6 @@ where
         temperature_pressure,
         temperature_humidity: [
             temperature_humidity_1,
-            None,
             None,
             None,
             None,
