@@ -4,6 +4,7 @@
 mod panic;
 mod format;
 
+use core::fmt::Write;
 use arrayvec::ArrayString;
 use cortex_m_rt::{entry};
 use cortex_m::peripheral::Peripherals as CortexPeripherals;
@@ -14,10 +15,12 @@ use embedded_graphics::{
 };
 use embedded_hal::spi;
 use embedded_sdmmc::{Controller, SdMmcSpi, TimeSource, Timestamp};
+use format::format_date;
 use panic::halt_with_error_led;
 use hx1230::{ArrayDisplayBuffer, SpiDriver, DisplayBuffer, DisplayDriver};
 use lib_datalogger::detect_sd_card_size;
-use stm32f4xx_hal::{prelude::*, pac::{self, Peripherals}, gpio::NoPin};
+use pcf8563::PCF8563;
+use stm32f4xx_hal::{prelude::*, pac::{self, Peripherals}, gpio::NoPin, i2c::I2c};
 
 use crate::format::print_card_size;
 
@@ -44,7 +47,7 @@ fn run(
 
     let mut display_cs = gpiob.pb14.into_push_pull_output();
 
-    let mut spi = dp.SPI2.spi(
+    let mut display_spi = dp.SPI2.spi(
         (gpiob.pb13, NoPin, gpiob.pb15),
         spi::MODE_0,
         4000.kHz(),
@@ -58,13 +61,23 @@ fn run(
         &clocks,
     );
 
+    let time_i2c = I2c::new(
+        dp.I2C1,
+        (
+            gpiob.pb8.into_alternate().set_open_drain(),
+            gpiob.pb9.into_alternate().set_open_drain(),
+        ),
+        400.kHz(),
+        &clocks,
+    );
+
     let sd_cs = gpiob.pb0.into_push_pull_output();
 
     let mut delay = dp.TIM5.delay_us(&clocks);
 
     let mut frame_buffer: ArrayDisplayBuffer = ArrayDisplayBuffer::new();
 
-    let mut display = SpiDriver::new(&mut spi, &mut display_cs);
+    let mut display = SpiDriver::new(&mut display_spi, &mut display_cs);
     display.initialize(&mut delay).map_err(|_| ())?;
 
     let mut sd_controller = Controller::new(SdMmcSpi::new(sd_spi, sd_cs), Clock);
@@ -72,20 +85,34 @@ fn run(
 
     let text_style = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
 
-    let mut debug = ArrayString::<200>::new();
+    let mut debug = ArrayString::<100>::new();
     print_card_size(&mut debug, card_size);
+    let _ = writeln!(&mut debug, "");
+
+    let mut time_driver = PCF8563::new(time_i2c);
 
     loop {
         frame_buffer.clear_buffer(0x00);
+        let mut text = ArrayString::<100>::new();
+        let _ = write!(&mut text, "{}", debug);
 
-        Text::new(&debug, Point::new(0, 10), text_style)
+        match time_driver.get_datetime() {
+            Ok(datetime) => {
+                format_date(&mut text, datetime);
+            },
+            Err(error) => {
+                let _ = write!(&mut text, "Time? Err:\n{:?}", error);
+            }
+        };
+
+        Text::new(&text, Point::new(0, 10), text_style)
             .draw(&mut frame_buffer)
             .map_err(|_| ())?;
 
-        let mut driver = SpiDriver::new(&mut spi, &mut display_cs);
+        let mut driver = SpiDriver::new(&mut display_spi, &mut display_cs);
         driver.send_buffer(&frame_buffer).map_err(|_| ())?;
 
-        delay.delay_ms(1000_u16);
+        delay.delay_ms(400_u16);
     }
 }
 

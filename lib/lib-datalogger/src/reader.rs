@@ -19,7 +19,7 @@ where
 
             controller.device().deinit();
             result
-        }
+        },
         Err(error) => Err(DatalogError::CannotConnect(error)),
     }
 }

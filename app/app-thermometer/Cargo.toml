@@ -11,6 +11,7 @@ cortex-m-rt = "0.7"
 embedded-graphics = "0.7.1"
 hx1230 = "0.3.2"
 embedded-sdmmc = "0.3.0"
+pcf8563 = "0.1.2"
 lib-datalogger = { path = "../../lib/lib-datalogger" }
 
 [dependencies.stm32f4xx-hal]
