@@ -19,7 +19,7 @@ use log::{format_file_name, format_sensors_log};
 use panic::halt_with_error_led;
 use hx1230::{ArrayDisplayBuffer, SpiDriver};
 use lib_datalogger::{detect_sd_card_size, append_to_file};
-use sensors::{read_sensors, Time};
+use sensors::{read_sensors, Time, Dht11Drivers};
 use stm32f4xx_hal::{prelude::*, pac::{self, Peripherals}, gpio::NoPin, i2c::I2c};
 
 use crate::format::print_card_size;
@@ -82,7 +82,7 @@ fn run(
     let mut sd_controller = Controller::new(SdMmcSpi::new(sd_spi, sd_cs), Clock);
     let card_size = detect_sd_card_size(&mut sd_controller);
 
-    let mut thermo_drivers = (
+    let mut thermo_drivers = Dht11Drivers::new(
         Dht11::new(gpiob.pb10.into_open_drain_output()),
         Dht11::new(gpioa.pa8.into_open_drain_output()),
         Dht11::new(gpioa.pa9.into_open_drain_output()),

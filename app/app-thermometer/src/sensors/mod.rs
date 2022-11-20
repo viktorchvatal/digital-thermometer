@@ -1,10 +1,13 @@
+mod temperature_dht11;
+
 use core::fmt::Display;
 
 use bmp280_rs::{BMP280, I2CAddress};
-use dht11::{Dht11, Measurement};
+use dht11::{Measurement};
 use pcf8563::{PCF8563, DateTime};
 use embedded_hal::blocking::{i2c, delay::{DelayUs, DelayMs}};
-use embedded_hal::digital::v2::{InputPin, OutputPin};
+
+pub use temperature_dht11::{Dht11Drivers, Dht11Reader};
 
 pub struct Sensors {
     pub time: Option<DateTime>,
@@ -45,42 +48,22 @@ impl Display for Time {
     }
 }
 
-pub fn read_sensors<I2C, I2CE, D, T0, T1, T2, T3, T4, T5, TE>(
+pub fn read_sensors<I2C, I2CE, D>(
     i2c: I2C,
-    thermo_drivers: &mut (
-        Dht11<T0>,
-        Dht11<T1>,
-        Dht11<T2>,
-        Dht11<T3>,
-        Dht11<T4>,
-        Dht11<T5>,
-    ),
+    thermo_drivers: &mut dyn Dht11Reader<D>,
     delay: &mut D
 ) -> (Sensors, I2C)
 where
     I2C: i2c::Write<Error = I2CE> + i2c::WriteRead<Error = I2CE>,
     I2CE: core::fmt::Debug,
     D: DelayUs<u16> + DelayMs<u16>,
-    T0: InputPin<Error = TE> + OutputPin<Error = TE>,
-    T1: InputPin<Error = TE> + OutputPin<Error = TE>,
-    T2: InputPin<Error = TE> + OutputPin<Error = TE>,
-    T3: InputPin<Error = TE> + OutputPin<Error = TE>,
-    T4: InputPin<Error = TE> + OutputPin<Error = TE>,
-    T5: InputPin<Error = TE> + OutputPin<Error = TE>,
 {
     let mut time_driver = PCF8563::new(i2c);
     let time = time_driver.get_datetime().ok();
     let mut i2c = time_driver.destroy();
     let temperature_pressure = read_bmp280(&mut i2c);
 
-    let temperature_humidity = [
-        read_dht11(&mut thermo_drivers.0, delay),
-        read_dht11(&mut thermo_drivers.1, delay),
-        read_dht11(&mut thermo_drivers.2, delay),
-        read_dht11(&mut thermo_drivers.3, delay),
-        read_dht11(&mut thermo_drivers.4, delay),
-        read_dht11(&mut thermo_drivers.5, delay),
-    ];
+    let temperature_humidity = thermo_drivers.read(delay);
 
     let sensors = Sensors {
         time,
@@ -96,17 +79,6 @@ pub struct TemperaturePressure {
     pub temperature: i32,
     /// In pascals
     pub pressure: i32,
-}
-
-fn read_dht11<T, D, E>(
-    driver: &mut Dht11<T>,
-    delay: &mut D
-) -> Option<Measurement>
-where
-    D: DelayUs<u16> + DelayMs<u16>,
-    T: InputPin<Error = E> + OutputPin<Error = E>
-{
-    driver.perform_measurement(delay).ok()
 }
 
 fn read_bmp280<I2C, I2CE>(i2c: &mut I2C) -> Option<TemperaturePressure>
