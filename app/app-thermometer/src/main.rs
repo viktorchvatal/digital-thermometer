@@ -79,7 +79,6 @@ fn run(
     let mut frame_buffer: ArrayDisplayBuffer = ArrayDisplayBuffer::new();
 
     let mut display = SpiDriver::new(&mut display_spi, &mut display_cs);
-    display.initialize(&mut delay).map_err(|_| ())?;
 
     let mut sd_controller = Controller::new(SdMmcSpi::new(sd_spi, sd_cs), Clock);
     let card_size = detect_sd_card_size(&mut sd_controller);
@@ -89,9 +88,12 @@ fn run(
     let mut sd_result = ArrayString::<40>::new();
     print_card_size(&mut sd_result, card_size);
     let mut last_write_attempt = Time::default();
+    let mut counter: u64 = 0;
 
     loop {
-        frame_buffer.clear_buffer(0x00);
+        if counter % 20 == 0 {
+            display.initialize(&mut delay).map_err(|_| ())?;
+        }
 
         let i2c_local = Cell::new(None);
         i2c_container.swap(&i2c_local);
@@ -127,6 +129,7 @@ fn run(
         }
 
         delay.delay_ms(400_u16);
+        counter += 1;
     }
 }
 
