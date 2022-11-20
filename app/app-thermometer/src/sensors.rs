@@ -9,7 +9,7 @@ use embedded_hal::digital::v2::{InputPin, OutputPin};
 pub struct Sensors {
     pub time: Option<DateTime>,
     pub temperature_pressure: Option<TemperaturePressure>,
-    pub temperature_humidity: [Option<Measurement>; 4],
+    pub temperature_humidity: [Option<Measurement>; 6],
 }
 
 impl Sensors {
@@ -45,32 +45,47 @@ impl Display for Time {
     }
 }
 
-pub fn read_sensors<I2C, I2CE, D, T1, TE>(
+pub fn read_sensors<I2C, I2CE, D, T0, T1, T2, T3, T4, T5, TE>(
     i2c: I2C,
-    thermo_1_driver: &mut Dht11<T1>,
+    thermo_drivers: &mut (
+        Dht11<T0>,
+        Dht11<T1>,
+        Dht11<T2>,
+        Dht11<T3>,
+        Dht11<T4>,
+        Dht11<T5>,
+    ),
     delay: &mut D
 ) -> (Sensors, I2C)
 where
     I2C: i2c::Write<Error = I2CE> + i2c::WriteRead<Error = I2CE>,
     I2CE: core::fmt::Debug,
     D: DelayUs<u16> + DelayMs<u16>,
+    T0: InputPin<Error = TE> + OutputPin<Error = TE>,
     T1: InputPin<Error = TE> + OutputPin<Error = TE>,
+    T2: InputPin<Error = TE> + OutputPin<Error = TE>,
+    T3: InputPin<Error = TE> + OutputPin<Error = TE>,
+    T4: InputPin<Error = TE> + OutputPin<Error = TE>,
+    T5: InputPin<Error = TE> + OutputPin<Error = TE>,
 {
     let mut time_driver = PCF8563::new(i2c);
     let time = time_driver.get_datetime().ok();
     let mut i2c = time_driver.destroy();
     let temperature_pressure = read_bmp280(&mut i2c);
-    let temperature_humidity_1 = read_dht11(thermo_1_driver, delay);
+
+    let temperature_humidity = [
+        read_dht11(&mut thermo_drivers.0, delay),
+        read_dht11(&mut thermo_drivers.1, delay),
+        read_dht11(&mut thermo_drivers.2, delay),
+        read_dht11(&mut thermo_drivers.3, delay),
+        read_dht11(&mut thermo_drivers.4, delay),
+        read_dht11(&mut thermo_drivers.5, delay),
+    ];
 
     let sensors = Sensors {
         time,
         temperature_pressure,
-        temperature_humidity: [
-            temperature_humidity_1,
-            None,
-            None,
-            None,
-        ]
+        temperature_humidity
     };
 
     (sensors, i2c)

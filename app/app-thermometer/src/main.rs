@@ -17,7 +17,7 @@ use embedded_hal::spi;
 use embedded_sdmmc::{Controller, SdMmcSpi, TimeSource, Timestamp};
 use log::{format_file_name, format_sensors_log};
 use panic::halt_with_error_led;
-use hx1230::{ArrayDisplayBuffer, SpiDriver, DisplayBuffer};
+use hx1230::{ArrayDisplayBuffer, SpiDriver};
 use lib_datalogger::{detect_sd_card_size, append_to_file};
 use sensors::{read_sensors, Time};
 use stm32f4xx_hal::{prelude::*, pac::{self, Peripherals}, gpio::NoPin, i2c::I2c};
@@ -72,7 +72,6 @@ fn run(
         &clocks,
     );
 
-    let thermo_1_pin = gpiob.pb10.into_open_drain_output();
     let i2c_container = Cell::new(Some(i2c));
     let sd_cs = gpiob.pb0.into_push_pull_output();
     let mut delay = dp.TIM5.delay_us(&clocks);
@@ -83,7 +82,14 @@ fn run(
     let mut sd_controller = Controller::new(SdMmcSpi::new(sd_spi, sd_cs), Clock);
     let card_size = detect_sd_card_size(&mut sd_controller);
 
-    let mut thermo_1_driver = Dht11::new(thermo_1_pin);
+    let mut thermo_drivers = (
+        Dht11::new(gpiob.pb10.into_open_drain_output()),
+        Dht11::new(gpioa.pa8.into_open_drain_output()),
+        Dht11::new(gpioa.pa9.into_open_drain_output()),
+        Dht11::new(gpioa.pa10.into_open_drain_output()),
+        Dht11::new(gpioa.pa11.into_open_drain_output()),
+        Dht11::new(gpioa.pa12.into_open_drain_output()),
+    );
 
     let mut sd_result = ArrayString::<40>::new();
     print_card_size(&mut sd_result, card_size);
@@ -100,7 +106,7 @@ fn run(
 
         let (sensors, i2c_returned) = read_sensors(
             i2c_local.into_inner().unwrap(),
-            &mut thermo_1_driver,
+            &mut thermo_drivers,
             &mut delay
         );
 
